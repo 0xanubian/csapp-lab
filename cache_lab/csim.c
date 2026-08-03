@@ -7,6 +7,30 @@
 #include "cachelab.h"
 #include "csim.h"
 
+struct cache_system_t g_cache_system = {0};
+
+// power function for int data types
+int ipow(int base, unsigned exp)
+{
+    if (exp == 1) return base;
+    int result = 1;
+
+    // for squaring
+    if (exp == 2) {
+        return base * base;
+    }
+
+    for (int i = 1; i < exp; i++) {
+        result *= base;
+    }
+
+    return result;
+}
+
+/*
+ * parse the cli args using getopt() and populate the cache_system_t
+ * struct
+ */
 void parse_args(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "-h")) {
@@ -21,7 +45,7 @@ void parse_args(int argc, char **argv)
     }
 
     int opt;
-    int is_verbose, s, E, b;
+    unsigned is_verbose, s, E, b;
     char trace_file[32];
     char *space;
     size_t trace_file_namelen;
@@ -58,6 +82,15 @@ void parse_args(int argc, char **argv)
         }
     }
 
+    g_cache_system.nsets = ipow(2, s);
+    g_cache_system.nline = E;
+    g_cache_system.block_size = ipow(2, b);
+    g_cache_system.nset_index_bit = s;
+    g_cache_system.nblock_offset_bits = b;
+    g_cache_system.trace_file = strdup(trace_file);
+    g_cache_system.is_verbose = is_verbose;
+
+    //for debug use. it prints all the cli args parsed
     printf("s: %d, E: %d, b: %d, t: %s, v: %d\n", s, E, b, trace_file, is_verbose);
 }
 
