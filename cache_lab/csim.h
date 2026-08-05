@@ -20,9 +20,9 @@ struct operation_t {
 struct cache_line_t {
     struct cache_line_t *next;  // a pointer to the next line
     struct cache_line_t *prev;  // a pointer to the previous line
+    unsigned long long tag;     // tag to match with the tag from memory addr
     //unsigned char *cache_block; // an array of bytes for mem block in cache
     int valid;                  // valid bit
-    int tag;                    // tag to match with the tag from memory addr
 };
 
 struct cache_set_t {

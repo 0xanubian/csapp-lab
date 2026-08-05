@@ -2,21 +2,165 @@
 #include "csim.h"
 
 struct cache_system_t g_cache_system = {0};
+int hits = 0;
+int misses = 0;
+int evictions = 0;
+
+// frees all dynamically allocated memory
+void free_cache(void)
+{
+    unsigned nsets = g_cache_system.nsets;
+
+    for (int i = 0; i < nsets; i++) {
+        struct cache_line_t *curr = g_cache_system.sets[i].line;
+        struct cache_line_t *prev = curr;
+        while (curr != NULL) {
+            curr = curr->next;
+            free(prev);
+            prev = curr;
+        }
+    }
+
+    free(g_cache_system.sets);
+    free(g_cache_system.trace_file);
+}
+
+// matches a line in a given set with a given tag
+struct cache_line_t *match_line(struct cache_set_t *set, unsigned long long tag)
+{
+    struct cache_line_t *head = set->line;
+
+    struct cache_line_t *curr = head;
+
+    while (curr != NULL) {
+        if (curr->valid && curr->tag == tag) return curr;
+        curr = curr->next;
+    }
+    return NULL;
+}
+
+// allocates cache line 
+struct cache_line_t *allocate_line(unsigned long long tag)
+{
+    struct cache_line_t *line = (struct cache_line_t*)malloc(sizeof(struct cache_line_t));
+    line->next = NULL;
+    line->prev = NULL;
+    line->tag = tag;
+    line->valid = 1;
+
+    return line;
+}
 
 /*
- * load function
+ * this function simulates the instruction, prints info if verbose flag is 
+ * set and updates the miss, hit, eviction counters
  */
-void load(struct operation_t operation);
+void simulate_op(struct operation_t operation, char op)
+{
+    struct cache_set_t *myset = 
+        &(g_cache_system.sets[operation.metadata.set_index]);
 
-/*
- * store function
- */
-void store(struct operation_t operation);
+    unsigned long long tag = operation.metadata.tag;
 
-/*
- * modify function
- */
-void modify(struct operation_t operation);
+
+    int is_miss = 0;
+    int is_hit = 0;
+    int is_evict = 0;
+
+    /*
+     * set is empty, its a miss and will have to allocate a line and initialise
+     * it
+     */
+    if (myset->line == NULL) {
+        struct cache_line_t *line = allocate_line(tag);
+        myset->line = line;
+        myset->end = line;
+        myset->ncachelines_allocated = 1;
+
+        is_miss = 1;
+        misses++;
+        if (op == 'M') hits++;
+    }
+
+    /*
+     * if set has lines but tag from mem addr doesn't match with tag from any
+     * existing lines so create a new line and place it to the head of linked
+     * list and if new count of lines exeeds max no of lines then free and 
+     * unlink a line from tail. this is a case of eviction. this way we maintain
+     * a lru system
+     */
+    else if (!match_line(myset, tag)) {
+        struct cache_line_t *line = allocate_line(tag);
+        line->next = myset->line;
+        myset->line->prev = line;
+        myset->line = line;
+        (myset->ncachelines_allocated)++;
+
+        if (myset->ncachelines_allocated > g_cache_system.nline) {
+            struct cache_line_t *last = myset->end;
+            myset->end = myset->end->prev;
+            if (myset->end)
+                myset->end->next = NULL;
+            free(last);
+            (myset->ncachelines_allocated)--;
+            is_evict = 1;
+            evictions++;
+            misses++;
+
+            if (op == 'M') hits++;
+        }
+        else {
+            is_miss = 1;
+            misses++;
+            if (op == 'M') hits++;
+        }
+    }
+
+    else {
+        struct cache_line_t *line = match_line(myset, tag);
+
+        if (line->next && line->prev) {
+            line->next->prev = line->prev;
+            line->prev->next = line->next;
+        
+
+            line->next = myset->line;
+            line->prev = NULL;
+            myset->line->prev = line;
+            myset->line = line;
+        }
+
+        else if (!line->next && line->prev) {
+            line->prev->next = NULL;
+            myset->end = line->prev;
+            line->next = myset->line;
+            line->prev = NULL;
+            myset->line->prev = line;
+            myset->line = line;
+        }
+
+        is_hit = 1;
+        hits++;
+        if (op == 'M') hits++;
+    }
+    
+
+    if (g_cache_system.is_verbose && op != 'M') {
+        printf("%c %llx,%d", operation.op, operation.mem_addr, operation.size);
+        if (is_miss) printf(" miss\n");
+        if (is_evict) printf(" miss eviction\n");
+        if (is_hit) printf(" hit\n");
+    }
+
+    if (g_cache_system.is_verbose && op == 'M') {
+        printf("%c %llx,%d", operation.op, operation.mem_addr, operation.size);
+        if (is_miss) printf(" miss hit\n");
+        if (is_evict) printf(" miss eviction hit\n");
+        if (is_hit) printf(" hit hit\n");
+    }
+
+    return;
+}
 
 //retrives metadata from the mem addr of operation and sets the metadata struct
 void retrieve_metadata(struct operation_t *operation)
@@ -75,20 +219,23 @@ void start_simulation(void)
         char op = operation.op;
         switch (op) {
             case 'L':
-                load(operation);
+                simulate_op(operation, 'L');
                 break;
             case 'S':
-                store(operation);
+                simulate_op(operation, 'S');
                 break;
             case 'M':
-                modify(operation);
+                simulate_op(operation, 'M');
+                break;
+            case 'I':
                 break;
             default:
                 fprintf(stderr, "invalid operation: %c\n", op);
                 exit(-1);
         }
-
     }
+    free(line);
+    fclose(file);
 }
 
 /* initialise the cache system: allocates memory for sets and initialise the 
@@ -98,7 +245,7 @@ void init_cache(void)
 {
     unsigned nsets = g_cache_system.nsets;
     
-    g_cache_system.sets = calloc(nsets, sizeof(struct cache_set_t));
+    g_cache_system.sets = (struct cache_set_t*)calloc(nsets, sizeof(struct cache_set_t));
 
     struct cache_set_t *sets = g_cache_system.sets;
     for (int i = 0; i < nsets; i++) {
@@ -121,7 +268,7 @@ int ipow(int base, unsigned exp)
         return base * base;
     }
 
-    for (int i = 1; i < exp; i++) {
+    for (int i = 0; i < exp; i++) {
         result *= base;
     }
 
@@ -201,6 +348,8 @@ int main(int argc, char **argv, char **envp)
     init_cache();
     start_simulation();
 
-    printSummary(0, 0, 0);
+    free_cache();
+
+    printSummary(hits, misses, evictions);
     return 0;
 }
