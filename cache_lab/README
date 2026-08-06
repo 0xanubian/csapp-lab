@@ -1,3 +1,13 @@
+**files where i have implemented cache simulator:**
+[csim.c](https://github.com/0xanubian/csapp-lab/blob/main/cache_lab/csim.c) and [csim.h](https://github.com/0xanubian/csapp-lab/blob/main/cache_lab/csim.h)
+
+csim.h: struct definitions used in the implementation of cache simulator 
+csim.c: actual logic and code implementation for cache simulator
+
+
+**files where i have implemented matrix transpose function
+[trans.c](https://github.com/0xanubian/csapp-lab/blob/main/cache_lab/trans.c)
+
 This is the handout directory for the CS:APP Cache Lab. 
 
 ************************
