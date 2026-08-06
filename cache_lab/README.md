@@ -13,9 +13,9 @@ csim.c: actual logic and code implementation for cache simulator
 
 This is the handout directory for the CS:APP Cache Lab. 
 
-************************
-Running the autograders:
-************************
+## instructions
+
+### Running the autograders
 
 Before running the autograders, compile your code:
     linux> make
@@ -31,15 +31,14 @@ Check the correctness and performance of your transpose functions:
 Check everything at once (this is the program that your instructor runs):
     linux> ./driver.py    
 
-******
-Files:
-******
 
-# You will modifying and handing in these two files
+### Files
+
+*You will modifying and handing in these two files*
 csim.c       Your cache simulator
 trans.c      Your transpose function
 
-# Tools for evaluating your simulator and transpose function
+*Tools for evaluating your simulator and transpose function:*
 Makefile     Builds the simulator and tools
 README       This file
 driver.py*   The driver program, runs test-csim and test-trans
