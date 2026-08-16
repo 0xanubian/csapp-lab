@@ -264,14 +264,32 @@ int builtin_cmd(char **argv)
 void do_bgfg(char **argv) 
 {
     /* bg <job> restart the job by sending a SIGCONT signal and then run it in
-     * background. the <job> arg can be either a pid or a jid. <job> is in the 
+     * background. the <job> arg can be either a pid or a jid. jid is in the 
      * format of %num.
-     */
-
-    /* fg <job> restart the job by sending a SIGCONT signal and then run it in
-     * the foreground. the <job> arg can be either a pid or a jid. <job> is in
+     *
+     * fg <job> restart the job by sending a SIGCONT signal and then run it in
+     * the foreground. the <job> arg can be either a pid or a jid. jid is in
      * the format of %num.
      */
+
+    pid_t pid;
+    if (argv[1][0] == '%') {
+        int jid = atoi(argv[1]+1);
+        struct job_t *my_job = getjobjid(jobs, jid);
+        pid = my_job->pid;
+    } else pid = atoi(argv[1]);
+
+    kill(pid, SIGCONT);
+    
+    if (strcmp(argv[1], "bg") == 0) {
+        int status;
+        waitpid(pid, &status, WNOHANG);
+    }
+
+    else if (strcmp(argv[1], "fg") == 0) {
+        int status;
+        waitpid(pid, &status, 0);
+    }
     return;
 }
 
