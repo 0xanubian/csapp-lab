@@ -166,8 +166,34 @@ int main(int argc, char **argv)
 void eval(char *cmdline) 
 {
     char *argv[MAXARGS];
-    parseline(cmdline, argv);
+    int is_bg = parseline(cmdline, argv);
 
+    if (argv[0] == NULL) return;
+
+    if (!builtin_cmd(argv)) {
+        pid_t pid = fork();
+        if (pid < 0) unix_error("fork failed");
+
+        if (pid == 0) {     /* child process */
+            setpgid(0, 0);  /* puts child in a new process group */
+            if (execve(argv[0], argv, environ) == -1) {
+                printf("%s: Command not found.\n", argv[0]);
+                return;
+            }
+        }
+
+        /* parent process */
+        if (is_bg)
+            addjob(jobs, pid, BG, cmdline);
+
+        else {
+            addjob(jobs, pid, FG, cmdline);
+            int status;
+            if (!is_bg)
+                if (waitpid(pid, &status, 0) == pid)
+                    deletejob(jobs, pid);
+        }
+    }
     return;
 }
 
@@ -298,6 +324,8 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
+    int status;
+    waitpid(pid, &status, 0);
     return;
 }
 
