@@ -171,11 +171,19 @@ void eval(char *cmdline)
     if (argv[0] == NULL) return;
 
     if (!builtin_cmd(argv)) {
+        /* block the SIGCHLD signal */
+        sigset_t set;
+        sigaddset(&set, SIGCHLD);
+        sigprocmask(SIG_BLOCK, &set, NULL);
+
         pid_t pid = fork();
         if (pid < 0) unix_error("fork failed");
 
         if (pid == 0) {     /* child process */
             setpgid(0, 0);  /* puts child in a new process group */
+            
+            sigprocmask(SIG_UNBLOCK, &set, NULL);   /* unblockig SIGCHLD */
+
             if (execve(argv[0], argv, environ) == -1) {
                 printf("%s: Command not found.\n", argv[0]);
                 return;
@@ -183,15 +191,19 @@ void eval(char *cmdline)
         }
 
         /* parent process */
-        if (is_bg)
-            addjob(jobs, pid, BG, cmdline);
+        if (pid > 0) {
 
-        else {
-            addjob(jobs, pid, FG, cmdline);
-            int status;
-            if (!is_bg)
-                if (waitpid(pid, &status, 0) == pid)
-                    deletejob(jobs, pid);
+            if (is_bg) {
+                addjob(jobs, pid, BG, cmdline);
+                sigprocmask(SIG_UNBLOCK, &set, NULL);   /* unblockig SIGCHLD */
+            } else {
+                addjob(jobs, pid, FG, cmdline);
+                sigprocmask(SIG_UNBLOCK, &set, NULL);   /* unblockig SIGCHLD */
+                int status;
+                if (!is_bg)
+                    if (waitpid(pid, &status, 0) == pid)
+                        deletejob(jobs, pid);
+            }
         }
     }
     return;
@@ -305,17 +317,17 @@ void do_bgfg(char **argv)
         pid = my_job->pid;
     } else pid = atoi(argv[1]);
 
+    int jid = pid2jid(pid);
     kill(pid, SIGCONT);
     
-    if (strcmp(argv[1], "bg") == 0) {
-        int status;
-        waitpid(pid, &status, WNOHANG);
-    }
+    if (strcmp(argv[1], "bg") == 0)
+        jobs[jid].state = BG;
 
     else if (strcmp(argv[1], "fg") == 0) {
-        int status;
-        waitpid(pid, &status, 0);
+        jobs[jid].state = FG;
+        waitfg(pid);
     }
+
     return;
 }
 
@@ -342,6 +354,12 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig) 
 {
+    int status;
+    pid_t pid;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+        deletejob(jobs, pid);
+    
     return;
 }
 
