@@ -356,10 +356,22 @@ void sigchld_handler(int sig)
 {
     int status;
     pid_t pid;
+    int olderrno = errno;
 
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-        deletejob(jobs, pid);
+    while ((pid = waitpid(-1, &status, WNOHANG|WUNTRACED)) > 0) {
+        if (WIFEXITED(status) || WIFSIGNALED(status))   /*process exited normally */
+            deletejob(jobs, pid);
+        
+        else if (WIFSTOPPED(status)) {    /* process went to stopped state */
+            struct job_t *job = getjobpid(jobs, pid);
+            job->state = ST;
+        }
+    }
     
+    if (pid < 0 && errno == ECHILD)
+        unix_error("waitpid error in sigchld_handler");
+
+    errno = olderrno;
     return;
 }
 
@@ -370,6 +382,15 @@ void sigchld_handler(int sig)
  */
 void sigint_handler(int sig) 
 {
+    pid_t pid = fgpid(jobs);
+
+    if (pid) {
+       kill(-pid, SIGKILL);
+       int jid = pid2jid(pid);
+
+       printf("Job (%d) terminated by signal 2\n", jid);
+    }
+
     return;
 }
 
