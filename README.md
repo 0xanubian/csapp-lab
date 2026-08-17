@@ -7,7 +7,7 @@ This repo contains all of my solutions for the labs exercises from the book CS:A
 - [x] Attack Lab
 - [ ] Architecture Lab
 - [x] Cache Lab
-- [ ] Shell Lab
+- [x] Shell Lab
 - [ ] Malloc Lab
 - [ ] Proxy Lab
 
@@ -23,3 +23,6 @@ This repo contains all of my solutions for the labs exercises from the book CS:A
 
 
 - [Cache Lab](https://github.com/0xanubian/csapp-lab/tree/main/cache_lab): In this lab you have to implement a cache simulator in part A and optimise a matrix transpose function in part B. In part A you receive `s`, `b` and `E` from cli args, you have to parse them and then make a cache system with these no of sets and these no of lines. The line replacement algorithm is LRU. Its a good exercise to learn about machine state, pointer manipulation, debugging memory errors, making a software from just specifications. Now for part B you implement 3 different functions for three different matrix size. you learn about blocking/tiling, diagonal conflict.
+
+
+- [Shell Lab](https://github.com/0xanubian/csapp-lab/tree/main/shell_lab): In this lab we implement a tiny shell with features like background processes and job control. I implemented process creation, process synchronisation using signal masking, reaping child processes, signals, signal handlers, change the state of a process from foreground to background to stopped. Its a good exercise to learns about parent child relation, signal safe code, signal handling, process control.
