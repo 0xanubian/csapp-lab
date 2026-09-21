@@ -72,15 +72,34 @@ team_t team = {
 #define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
-static void *heap_listp;
-
 /* retrive the next_freed_pointer from a freed block pointer */
 #define NEXT_FREEDP(bp)     GET(bp)
+
+static void *heap_listp;
+
+/* coalesce any contigous freed chunks */
+static void *coalesce(void *bp);
 
 /* extends the heap by the given word count */
 static void *extend_heap(size_t words)
 {
-    return NULL;
+    void *bp;
+    size_t size;
+
+    /* adjust no of words to form allignement and then initialize size */
+    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+
+    /* calls mem_sbrk to extend the heap */
+    if ((long)(bp = mem_sbrk(size)) == -1)
+        return NULL;
+
+    /* puts the header and pooter into the new free chunk and puts the new epilogue */
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+
+    /* calls coalesce to coalesce any contigous free chunk */
+    return coalesce(bp);
 }
 
 /* 
