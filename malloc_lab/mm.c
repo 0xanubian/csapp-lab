@@ -48,7 +48,8 @@ team_t team = {
 
 /* word size */
 #define WSIZE 4
-
+#define DSIZE 8
+#define CHUNKSIZE (1 << 12)
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))  
 
@@ -71,14 +72,36 @@ team_t team = {
 #define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
+static void *heap_listp;
+
 /* retrive the next_freed_pointer from a freed block pointer */
 #define NEXT_FREEDP(bp)     GET(bp)
+
+/* extends the heap by the given word count */
+static void *extend_heap(size_t words)
+{
+    return NULL;
+}
 
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
+    /* call mem_sbrk to setup an empty free list */
+    if ((long)(heap_listp = mem_sbrk(4 * WSIZE)) == -1)
+        return -1;
+    
+    /* puts padding, prologue and epilogue into the empty free list */
+    PUT(heap_listp, 0);
+    PUT(((char *)heap_listp + WSIZE), PACK(8, 1));
+    PUT(((char *)heap_listp + DSIZE), PACK(8, 1));
+    heap_listp = (char*)heap_listp + DSIZE + WSIZE;
+    PUT(heap_listp, PACK(0, 1));
+
+    if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
+        return -1;
+
     return 0;
 }
 
