@@ -65,15 +65,18 @@ team_t team = {
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 /* retrieve header and footer address from a block pointer */
-#define HDRP(bp)       ((char *)(bp) - WSIZE)
-#define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+#define HDRP(bp)       ((char *)(bp) - DSIZE)
+#define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - (2 * DSIZE))
 
 /* retrieve address of next and previous block pointer from current block pointer */
-#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
-#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - DSIZE)))
+#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - (2 * DSIZE))))
 
 /* retrive the next_freed_pointer from a freed block pointer */
 #define NEXT_FREEDP(bp)     GET(bp)
+
+/* retrive the prev_freed_ponter from a freed block pointer */
+#define PREV_FREEDP(bp)     GET(bp+DSIZE)
 
 static void *heap_listp;
 
@@ -87,7 +90,7 @@ static void *extend_heap(size_t words)
     size_t size;
 
     /* adjust no of words to form allignement and then initialize size */
-    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    size = (words % 2) ? (words + 1) * DSIZE : words * DSIZE;
 
     /* calls mem_sbrk to extend the heap */
     if ((long)(bp = mem_sbrk(size)) == -1)
@@ -112,13 +115,12 @@ int mm_init(void)
         return -1;
     
     /* puts padding, prologue and epilogue into the empty free list */
-    PUT(heap_listp, 0);
-    PUT(((char *)heap_listp + WSIZE), PACK(8, 1));
+    PUT((char *)(heap_listp), PACK(8, 1));
     PUT(((char *)heap_listp + DSIZE), PACK(8, 1));
-    heap_listp = (char*)heap_listp + DSIZE + WSIZE;
+    heap_listp = (char*)heap_listp + (2 * DSIZE);
     PUT(heap_listp, PACK(0, 1));
 
-    if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
+    if (extend_heap(CHUNKSIZE/DSIZE) == NULL)
         return -1;
 
     return 0;
