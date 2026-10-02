@@ -75,13 +75,100 @@ team_t team = {
 /* retrive the next_freed_pointer from a freed block pointer */
 #define NEXT_FREEDP(bp)     GET(bp)
 
-/* retrive the prev_freed_ponter from a freed block pointer */
-#define PREV_FREEDP(bp)     GET(bp+DSIZE)
+/* retrive the prev_freed_pointer from a freed block pointer */
+#define PREV_FREEDP(bp)     GET(bp+WSIZE)
+
+/* put the next_freed_pointer to a freed block pointer */
+#define PUT_NEXT(bp, val)    PUT(bp, val)
+
+/*put the prev_freed_pointer to a freed block pointer */
+#define PUT_PREV(bp, val)    PUT(bp+WSIZE, val);
 
 static void *heap_listp;
+static void *free_listp;
+
+/* insert a free chunk at the head of free list */
+void insert_at_head(void *bp) 
+{
+    PUT_PREV(bp, 0);
+    PUT_NEXT(bp, (long)free_listp);
+    if(free_listp != 0)
+        PUT_PREV(free_listp, (long)bp);
+    free_listp = bp;
+}
+
+/* unlinks a free chunk from the linked list of freed chunks */
+void unlink_chunk(void *bp)
+{
+    if (PREV_FREEDP(bp) != 0)
+        PUT_NEXT(PREV_FREEDP(bp), NEXT_FREEDP(bp));
+    else free_listp = (void *)NEXT_FREEDP(bp);
+    
+    if (NEXT_FREEDP(bp) != 0)
+        PUT_PREV(NEXT_FREEDP(bp), PREV_FREEDP(bp));
+}
 
 /* coalesce any contigous freed chunks */
-static void *coalesce(void *bp);
+static void *coalesce(void *bp)
+{
+    int prev_chunk_allocated = GET_ALLOC(PREV_BLKP(bp));
+    int next_chunk_allocated = GET_ALLOC(NEXT_BLKP(bp));
+    size_t size = GET_SIZE(bp);
+
+    /* if both adjacent chunks are allocated then return bp */
+    if (prev_chunk_allocated && next_chunk_allocated)
+        return bp;
+
+    /*
+     * if prev adjacent chunk is allocated but next is freed then increase the 
+     * size of current chunk with of next chunk then unlink both chunks from
+     * the free list and insert the new coalesced chunk at the head of free list
+     */
+    else if (prev_chunk_allocated && !next_chunk_allocated) {
+        size += GET_SIZE(NEXT_BLKP(bp));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
+        
+        unlink_chunk(bp);
+        unlink_chunk(NEXT_BLKP(bp));
+        insert_at_head(bp);
+    }
+    
+    /*
+     * if prev adjacent chunk is freed but next is not then increase the size
+     * of prev chunk with of the current chunk then unlink both chunks from the
+     * free list and insert the new coalesced chunk at the head of free list 
+     */
+    else if (!prev_chunk_allocated && next_chunk_allocated) {
+        size += GET_SIZE(PREV_BLKP(bp));
+        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+
+        unlink_chunk(bp);
+        unlink_chunk(PREV_BLKP(bp));
+        insert_at_head(PREV_BLKP(bp));
+        bp = PREV_BLKP(bp);
+    }
+
+    /*
+     * if both adcanet chunks are freed then increment size with the size of 
+     * but adjacent chunks then unlink all 3 chunks and insert the coalesced 
+     * one at the head of free list
+     */
+    else if (!prev_chunk_allocated && !next_chunk_allocated) {
+        size += GET_SIZE(PREV_BLKP(bp));
+        size += GET_SIZE(NEXT_BLKP(bp));
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+
+        unlink_chunk(bp);
+        unlink_chunk(PREV_BLKP(bp));
+        unlink_chunk(NEXT_BLKP(bp));
+        insert_at_head(PREV_BLKP(bp));
+        bp = PREV_BLKP(bp);
+    }
+    return bp;
+}
 
 /* extends the heap by the given word count */
 static void *extend_heap(size_t words)
