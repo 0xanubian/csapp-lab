@@ -230,10 +230,16 @@ void *mm_malloc(size_t size)
 }
 
 /*
- * mm_free - Freeing a block does nothing.
+ * mm_free - sets the allocated bit of the chunk to 0 and adds the chunk to 
+ * free list and then calls coalesce().
  */
 void mm_free(void *ptr)
 {
+    size_t size = GET_SIZE(ptr);
+    PUT(HDRP(ptr), PACK(size, 0));
+    PUT(FTRP(ptr), PACK(size, 0));
+    insert_at_head(ptr);
+    coalesce(ptr);
 }
 
 /*
