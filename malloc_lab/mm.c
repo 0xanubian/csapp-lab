@@ -85,7 +85,7 @@ team_t team = {
 #define PUT_PREV(bp, val)    PUT(bp+WSIZE, val);
 
 static void *heap_listp;
-static void *free_listp;
+void *free_listp = 0;
 
 /* insert a free chunk at the head of free list */
 void insert_at_head(void *bp) 
@@ -111,9 +111,9 @@ void unlink_chunk(void *bp)
 /* coalesce any contigous freed chunks */
 static void *coalesce(void *bp)
 {
-    int prev_chunk_allocated = GET_ALLOC(PREV_BLKP(bp));
-    int next_chunk_allocated = GET_ALLOC(NEXT_BLKP(bp));
-    size_t size = GET_SIZE(bp);
+    int prev_chunk_allocated = GET_ALLOC(bp-DSIZE-DSIZE);
+    int next_chunk_allocated = GET_ALLOC(FTRP(bp)+DSIZE);
+    size_t size = GET_SIZE(HDRP(bp));
 
     /* if both adjacent chunks are allocated then return bp */
     if (prev_chunk_allocated && next_chunk_allocated)
@@ -125,7 +125,7 @@ static void *coalesce(void *bp)
      * the free list and insert the new coalesced chunk at the head of free list
      */
     else if (prev_chunk_allocated && !next_chunk_allocated) {
-        size += GET_SIZE(NEXT_BLKP(bp));
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
         
@@ -140,7 +140,7 @@ static void *coalesce(void *bp)
      * free list and insert the new coalesced chunk at the head of free list 
      */
     else if (!prev_chunk_allocated && next_chunk_allocated) {
-        size += GET_SIZE(PREV_BLKP(bp));
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
 
@@ -156,8 +156,8 @@ static void *coalesce(void *bp)
      * one at the head of free list
      */
     else if (!prev_chunk_allocated && !next_chunk_allocated) {
-        size += GET_SIZE(PREV_BLKP(bp));
-        size += GET_SIZE(NEXT_BLKP(bp));
+        size += GET_SIZE(bp-DSIZE-DSIZE);
+        size += GET_SIZE(FTRP(bp)+DSIZE);
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
 
@@ -174,7 +174,7 @@ static void *coalesce(void *bp)
 static void *extend_heap(size_t words)
 {
     void *bp;
-    size_t size;
+    size_t size, asize;
 
     /* adjust no of words to form allignement and then initialize size */
     size = (words % 2) ? (words + 1) * DSIZE : words * DSIZE;
@@ -184,12 +184,55 @@ static void *extend_heap(size_t words)
         return NULL;
 
     /* puts the header and pooter into the new free chunk and puts the new epilogue */
-    PUT(HDRP(bp), PACK(size, 0));
-    PUT(FTRP(bp), PACK(size, 0));
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+    PUT(bp, PACK(size, 0));
+    PUT(bp+size+DSIZE, PACK(size, 0));
+    PUT(bp+size+DSIZE+DSIZE, PACK(0, 1));
+    bp += DSIZE;
 
     /* calls coalesce to coalesce any contigous free chunk */
     return coalesce(bp);
+}
+
+/* traverses the segregated free list and if the size of a freed chunk is 
+ * greater than or equal to the size requested then it sets the allocaated
+ * of the chunk, unlinks it from the free list and return the block pointer
+ * otherwise it returns NULL
+ */
+void *find_free(size_t size)
+{
+    void *bp = free_listp;
+
+    while (bp != 0) {
+        if (GET_SIZE(HDRP(bp)) >= size) {
+            unlink_chunk(bp);
+            PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
+            PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
+            return bp;
+        }
+        bp = NEXT_BLKP(bp);
+    }
+    return NULL;
+}
+
+void place(void *bp, size_t size)
+{
+    if (GET_SIZE(HDRP(bp)) >= 2 * size) {
+        void * next_chunk = bp + size + DSIZE;
+
+        size_t default_size = GET_SIZE(HDRP(bp));
+        size_t curr_size = size;
+        size_t next_size = default_size - size;
+
+        // put size and alloc bit of the allocated current block
+        PUT(HDRP(bp), PACK(curr_size, 1));
+        PUT(FTRP(bp), PACK(curr_size, 1));
+
+        // put size and unalloc bit of the new freed block
+        void *nxt_bk = NEXT_BLKP(bp);
+        PUT(HDRP(nxt_bk), PACK(next_size, 0));
+        PUT(FTRP(nxt_bk), PACK(next_size, 0));
+        insert_at_head(nxt_bk);
+    }
 }
 
 /* 
@@ -214,19 +257,32 @@ int mm_init(void)
 }
 
 /* 
- * mm_malloc - Allocate a block by incrementing the brk pointer.
- *     Always allocate a block whose size is a multiple of the alignment.
+ * mm_malloc - allocate a new chunk by first searching the free list. If no
+ * freed block satisfies the size then extend the heap and cut extra size in 
+ * bothe condition by calling place(). returns the payload address of new chunk
+ * allocated
  */
 void *mm_malloc(size_t size)
 {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
-    if (p == (void *)-1)
-	return NULL;
-    else {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
+    if (size == 0)
+        return NULL;
+
+    size_t asize = ALIGN(size);
+    asize += 16;
+    
+    void *bp = find_free(asize);
+    if (bp != NULL) {
+        place(bp, asize);
+        return bp;
     }
+
+    asize = MAX(asize, CHUNKSIZE);
+    bp = extend_heap(asize/DSIZE);
+    PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
+    PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
+  
+    place(bp, asize);
+    return bp;
 }
 
 /*
@@ -235,7 +291,7 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
-    size_t size = GET_SIZE(ptr);
+    size_t size = GET_SIZE(HDRP(ptr));
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
     insert_at_head(ptr);
