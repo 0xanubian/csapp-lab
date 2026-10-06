@@ -174,7 +174,7 @@ static void *coalesce(void *bp)
 static void *extend_heap(size_t words)
 {
     void *bp;
-    size_t size, asize;
+    size_t size;
 
     /* adjust no of words to form allignement and then initialize size */
     size = (words % 2) ? (words + 1) * DSIZE : words * DSIZE;
@@ -185,8 +185,8 @@ static void *extend_heap(size_t words)
 
     /* puts the header and pooter into the new free chunk and puts the new epilogue */
     PUT(bp, PACK(size, 0));
-    PUT(bp+size+DSIZE, PACK(size, 0));
-    PUT(bp+size+DSIZE+DSIZE, PACK(0, 1));
+    PUT(bp+size-DSIZE, PACK(size, 0));
+    PUT(bp+size, PACK(0, 1));
     bp += DSIZE;
 
     /* calls coalesce to coalesce any contigous free chunk */
@@ -203,10 +203,14 @@ void *find_free(size_t size)
     void *bp = free_listp;
 
     while (bp != 0) {
-        if (GET_SIZE(HDRP(bp)) >= size) {
+        size_t chunk_size = GET_SIZE(HDRP(bp));
+        if (chunk_size == 0)
+            return NULL;
+
+        if (chunk_size >= size) {
             unlink_chunk(bp);
-            PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
-            PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
+            PUT(HDRP(bp), PACK(chunk_size, 1));
+            PUT(FTRP(bp), PACK(chunk_size, 1));
             return bp;
         }
         bp = NEXT_BLKP(bp);
@@ -217,8 +221,6 @@ void *find_free(size_t size)
 void place(void *bp, size_t size)
 {
     if (GET_SIZE(HDRP(bp)) >= 2 * size) {
-        void * next_chunk = bp + size + DSIZE;
-
         size_t default_size = GET_SIZE(HDRP(bp));
         size_t curr_size = size;
         size_t next_size = default_size - size;
