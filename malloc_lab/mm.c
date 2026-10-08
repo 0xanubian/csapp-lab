@@ -67,6 +67,7 @@ team_t team = {
 /* retrieve header and footer address from a block pointer */
 #define HDRP(bp)       ((char *)(bp) - DSIZE)
 #define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - (2 * DSIZE))
+#define PREV_FTRP(bp)  ((char *)(bp) - (2 * DSIZE))
 
 /* retrieve address of next and previous block pointer from current block pointer */
 #define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - DSIZE)))
@@ -76,13 +77,13 @@ team_t team = {
 #define NEXT_FREEDP(bp)     GET(bp)
 
 /* retrive the prev_freed_pointer from a freed block pointer */
-#define PREV_FREEDP(bp)     GET(bp+WSIZE)
+#define PREV_FREEDP(bp)     GET((char *)bp+WSIZE)
 
 /* put the next_freed_pointer to a freed block pointer */
 #define PUT_NEXT(bp, val)    PUT(bp, val)
 
 /*put the prev_freed_pointer to a freed block pointer */
-#define PUT_PREV(bp, val)    PUT(bp+WSIZE, val);
+#define PUT_PREV(bp, val)    PUT((char *)bp+WSIZE, val)
 
 static void *heap_listp;
 void *free_listp = 0;
@@ -111,8 +112,8 @@ void unlink_chunk(void *bp)
 /* coalesce any contigous freed chunks */
 static void *coalesce(void *bp)
 {
-    int prev_chunk_allocated = GET_ALLOC(bp-DSIZE-DSIZE);
-    int next_chunk_allocated = GET_ALLOC(FTRP(bp)+DSIZE);
+    int prev_chunk_allocated = GET_ALLOC(PREV_FTRP(bp));
+    int next_chunk_allocated = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
     /* if both adjacent chunks are allocated then return bp */
@@ -125,12 +126,13 @@ static void *coalesce(void *bp)
      * the free list and insert the new coalesced chunk at the head of free list
      */
     else if (prev_chunk_allocated && !next_chunk_allocated) {
+        unlink_chunk(bp);
+        unlink_chunk(NEXT_BLKP(bp));
+
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
         
-        unlink_chunk(bp);
-        unlink_chunk(NEXT_BLKP(bp));
         insert_at_head(bp);
     }
     
@@ -140,12 +142,13 @@ static void *coalesce(void *bp)
      * free list and insert the new coalesced chunk at the head of free list 
      */
     else if (!prev_chunk_allocated && next_chunk_allocated) {
+        unlink_chunk(bp);
+        unlink_chunk(PREV_BLKP(bp));
+
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
 
-        unlink_chunk(bp);
-        unlink_chunk(PREV_BLKP(bp));
         insert_at_head(PREV_BLKP(bp));
         bp = PREV_BLKP(bp);
     }
@@ -156,14 +159,15 @@ static void *coalesce(void *bp)
      * one at the head of free list
      */
     else if (!prev_chunk_allocated && !next_chunk_allocated) {
+        unlink_chunk(bp);
+        unlink_chunk(PREV_BLKP(bp));
+        unlink_chunk(NEXT_BLKP(bp));
+
         size += GET_SIZE(bp-DSIZE-DSIZE);
         size += GET_SIZE(FTRP(bp)+DSIZE);
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
 
-        unlink_chunk(bp);
-        unlink_chunk(PREV_BLKP(bp));
-        unlink_chunk(NEXT_BLKP(bp));
         insert_at_head(PREV_BLKP(bp));
         bp = PREV_BLKP(bp);
     }
@@ -184,10 +188,12 @@ static void *extend_heap(size_t words)
         return NULL;
 
     /* puts the header and pooter into the new free chunk and puts the new epilogue */
-    PUT(bp, PACK(size, 0));
-    PUT(bp+size-DSIZE, PACK(size, 0));
-    PUT(bp+size, PACK(0, 1));
-    bp += DSIZE;
+    PUT(HDRP(bp), PACK((size), 0));
+    PUT(FTRP(bp), PACK((size), 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
+
+    /* insert the newly created free chunk in the free list */
+    insert_at_head(bp);
 
     /* calls coalesce to coalesce any contigous free chunk */
     return coalesce(bp);
@@ -213,14 +219,14 @@ void *find_free(size_t size)
             PUT(FTRP(bp), PACK(chunk_size, 1));
             return bp;
         }
-        bp = NEXT_BLKP(bp);
+        bp = (void *)NEXT_FREEDP(bp);
     }
     return NULL;
 }
 
 void place(void *bp, size_t size)
 {
-    if (GET_SIZE(HDRP(bp)) >= 2 * size) {
+    if (GET_SIZE(HDRP(bp)) >= (size + (3 * DSIZE))) {
         size_t default_size = GET_SIZE(HDRP(bp));
         size_t curr_size = size;
         size_t next_size = default_size - size;
@@ -242,8 +248,10 @@ void place(void *bp, size_t size)
  */
 int mm_init(void)
 {
+    /* reset the free_listp address */
+    free_listp = NULL;
     /* call mem_sbrk to setup an empty free list */
-    if ((long)(heap_listp = mem_sbrk(4 * WSIZE)) == -1)
+    if ((long)(heap_listp = mem_sbrk(3 * DSIZE)) == -1)
         return -1;
     
     /* puts padding, prologue and epilogue into the empty free list */
@@ -278,8 +286,12 @@ void *mm_malloc(size_t size)
         return bp;
     }
 
-    asize = MAX(asize, CHUNKSIZE);
-    bp = extend_heap(asize/DSIZE);
+    size_t esize = MAX(asize, (CHUNKSIZE+16));
+    bp = extend_heap(esize/DSIZE);
+    if (bp == NULL)
+        return NULL;
+
+    unlink_chunk(bp);
     PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
     PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 1));
   
@@ -293,6 +305,8 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
+    if (ptr == NULL)
+        return;
     size_t size = GET_SIZE(HDRP(ptr));
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
@@ -305,6 +319,14 @@ void mm_free(void *ptr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
+    if (ptr == NULL)
+        return mm_malloc(size);
+
+    if (size == 0) {
+        mm_free(ptr);
+        return NULL;
+    }
+
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
@@ -312,9 +334,13 @@ void *mm_realloc(void *ptr, size_t size)
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
+
     copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    copySize = GET_SIZE(copySize) - (2 * DSIZE);
+    
     if (size < copySize)
       copySize = size;
+    
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;

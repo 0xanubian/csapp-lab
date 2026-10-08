@@ -1,0 +1,107 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-g",
+      "-m32",
+      "-c",
+      "-o",
+      "mdriver.o",
+      "mdriver.c"
+    ],
+    "directory": "/home/zombozo/dev/csapp-lab/malloc_lab",
+    "file": "/home/zombozo/dev/csapp-lab/malloc_lab/mdriver.c",
+    "output": "/home/zombozo/dev/csapp-lab/malloc_lab/mdriver.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-g",
+      "-m32",
+      "-c",
+      "-o",
+      "mm.o",
+      "mm.c"
+    ],
+    "directory": "/home/zombozo/dev/csapp-lab/malloc_lab",
+    "file": "/home/zombozo/dev/csapp-lab/malloc_lab/mm.c",
+    "output": "/home/zombozo/dev/csapp-lab/malloc_lab/mm.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-g",
+      "-m32",
+      "-c",
+      "-o",
+      "memlib.o",
+      "memlib.c"
+    ],
+    "directory": "/home/zombozo/dev/csapp-lab/malloc_lab",
+    "file": "/home/zombozo/dev/csapp-lab/malloc_lab/memlib.c",
+    "output": "/home/zombozo/dev/csapp-lab/malloc_lab/memlib.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-g",
+      "-m32",
+      "-c",
+      "-o",
+      "fsecs.o",
+      "fsecs.c"
+    ],
+    "directory": "/home/zombozo/dev/csapp-lab/malloc_lab",
+    "file": "/home/zombozo/dev/csapp-lab/malloc_lab/fsecs.c",
+    "output": "/home/zombozo/dev/csapp-lab/malloc_lab/fsecs.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-g",
+      "-m32",
+      "-c",
+      "-o",
+      "fcyc.o",
+      "fcyc.c"
+    ],
+    "directory": "/home/zombozo/dev/csapp-lab/malloc_lab",
+    "file": "/home/zombozo/dev/csapp-lab/malloc_lab/fcyc.c",
+    "output": "/home/zombozo/dev/csapp-lab/malloc_lab/fcyc.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-g",
+      "-m32",
+      "-c",
+      "-o",
+      "clock.o",
+      "clock.c"
+    ],
+    "directory": "/home/zombozo/dev/csapp-lab/malloc_lab",
+    "file": "/home/zombozo/dev/csapp-lab/malloc_lab/clock.c",
+    "output": "/home/zombozo/dev/csapp-lab/malloc_lab/clock.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-g",
+      "-m32",
+      "-c",
+      "-o",
+      "ftimer.o",
+      "ftimer.c"
+    ],
+    "directory": "/home/zombozo/dev/csapp-lab/malloc_lab",
+    "file": "/home/zombozo/dev/csapp-lab/malloc_lab/ftimer.c",
+    "output": "/home/zombozo/dev/csapp-lab/malloc_lab/ftimer.o"
+  }
+]
