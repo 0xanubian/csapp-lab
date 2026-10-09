@@ -1,13 +1,25 @@
 /*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
- * 
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
+ * In this approach i have a heap that has both prologue and epilogue chunks 
+ * in between them is our space to allocate and free chunks. you can extend the
+ * heap using extend_heap it will extend the heap at the end and create a new 
+ * epilogue. I also have a LIFO explicit free list to search for free chunks for 
+ * malloc requests. 
  *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * mm_malloc searches for free chunks from the explicit free list if found it unlinks 
+ * it and mark it allocated. if no free chunk is found then it extends the heap
+ * and allocates the new free chunk. It cuts any extra space from the allcoated
+ * chunk in both the cases using place().
+ *
+ * mm_free marks the chunk freed then insert it to the free list then coalesce
+ * them to any nearby freed chunk
+ *
+ * mm_realloc checks if the requested size is less than the original size, if 
+ * yes then it shrinks the size if the residual size >= MIN_CHUNK_SIZE and 
+ * frees the residual chunk. If not then it checks if the next chunk can be 
+ * absorbed into the current chunk otherwise it mm_mallocs a new chunk of 
+ * requested size then copies the data there and then frees the old chunk.
+ *
+ * overall score of my implementation is 84/100
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,8 +61,14 @@ team_t team = {
 /* word size */
 #define WSIZE 4
 #define DSIZE 8
+
+/* size of chunk to grow the heap i.e. 4096 or 4KB */
 #define CHUNKSIZE (1 << 12)
 
+/* Minimum chunk size in this implementation */
+#define MIN_CHUNK_SIZE 24
+
+/* find max between two numbers */
 #define MAX(x, y) ((x) > (y)? (x) : (y))  
 
 /* pack size and alloc bit */
@@ -85,7 +103,10 @@ team_t team = {
 /*put the prev_freed_pointer to a freed block pointer */
 #define PUT_PREV(bp, val)    PUT((char *)bp+WSIZE, val)
 
+/* a pointer to the start of heap */
 static void *heap_listp;
+
+/* a pointer to the explicit free list */
 void *free_listp = 0;
 
 /* insert a free chunk at the head of free list */
@@ -174,7 +195,10 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-/* extends the heap by the given word count */
+/*
+ * extends the heap by the given word count and returns the payload addr of 
+ * chunk
+ */
 static void *extend_heap(size_t words)
 {
     void *bp;
@@ -199,7 +223,8 @@ static void *extend_heap(size_t words)
     return coalesce(bp);
 }
 
-/* traverses the segregated free list and if the size of a freed chunk is 
+/* 
+ * traverses the explicit free list and if the size of a freed chunk is 
  * greater than or equal to the size requested then it sets the allocaated
  * of the chunk, unlinks it from the free list and return the block pointer
  * otherwise it returns NULL
@@ -224,6 +249,11 @@ void *find_free(size_t size)
     return NULL;
 }
 
+/*
+ * if the residual size is greater or equal to the size of minimum chunk size 
+ * then cut that extra size chunk and mark it free and insert it to the explicit
+ * free list
+ */
 void place(void *bp, size_t size)
 {
     if (GET_SIZE(HDRP(bp)) >= (size + (3 * DSIZE))) {
@@ -327,6 +357,82 @@ void *mm_realloc(void *ptr, size_t size)
         return NULL;
     }
 
+    size_t asize = ALIGN(size);
+    asize += 16;
+    size_t initial_chunk_size = GET_SIZE(HDRP(ptr));
+
+    /* 
+     * if asize is less than or equal to the size of chunk pointed to by ptr 
+     * then shrink the chunk and free the residual chunk if size of residual
+     * chunk is greater or equal to minimum chunk size. no need to copy any 
+     * payload contents 
+     */
+    if (asize <= initial_chunk_size) {
+        size_t residual_size = initial_chunk_size - asize;
+        if (residual_size >= MIN_CHUNK_SIZE) {
+            PUT(HDRP(ptr), PACK(asize, 1));
+            PUT(FTRP(ptr), PACK(asize, 1));
+            
+            PUT(HDRP(NEXT_BLKP(ptr)), PACK(residual_size, 0));
+            PUT(FTRP(NEXT_BLKP(ptr)), PACK(residual_size, 0));
+            insert_at_head(NEXT_BLKP(ptr));
+            coalesce(NEXT_BLKP(ptr));
+            return ptr;
+        }
+        return ptr;
+    }
+
+    /* 
+     * If next chunk after current chunk is free and it will satisfy the chunk
+     * size requirement then absorb the next chunk and see if the residual size
+     * is greater or equal to MIN_CHUNK_SIZE, if yes then mark it free and add
+     * it to the free list
+     */
+    int is_next_chunk_freed = !(GET_ALLOC(HDRP(NEXT_BLKP(ptr))));
+    size_t next_chunk_size = GET_SIZE(HDRP(NEXT_BLKP(ptr)));
+    size_t new_chunk_size = initial_chunk_size + next_chunk_size;
+
+    if (is_next_chunk_freed && (initial_chunk_size + next_chunk_size >= asize)) {
+        unlink_chunk(NEXT_BLKP(ptr));
+        PUT(HDRP(ptr), PACK(new_chunk_size, 1));
+        PUT(FTRP(ptr), PACK(new_chunk_size, 1));
+
+        size_t residual_size = GET_SIZE(HDRP(ptr)) - asize;
+        if (residual_size >= MIN_CHUNK_SIZE) {
+            PUT(HDRP(ptr), PACK(asize, 1));
+            PUT(FTRP(ptr), PACK(asize, 1));
+
+            PUT(HDRP(NEXT_BLKP(ptr)), PACK(residual_size, 0));
+            PUT(FTRP(NEXT_BLKP(ptr)), PACK(residual_size, 0));
+            insert_at_head(NEXT_BLKP(ptr));
+            coalesce(NEXT_BLKP(ptr));
+        }
+        return ptr;
+    }
+
+    /*
+     * if next chunk is the epilogue then extend the heap and the absorb the 
+     * newly created free block 
+     */
+    if (!is_next_chunk_freed && (next_chunk_size == 0)) {
+        size_t deficit = asize - initial_chunk_size;
+        //deficit = ALIGN(deficit) + 16;
+        void *nbk = extend_heap(deficit/DSIZE);
+        if (nbk == NULL)
+            return NULL;
+
+        unlink_chunk(nbk);
+        size_t nsize = initial_chunk_size + GET_SIZE(HDRP(nbk));
+        PUT(HDRP(ptr), PACK(nsize, 1));
+        PUT(FTRP(ptr), PACK(nsize, 1));
+
+        return ptr;
+    }
+
+    /*
+     * last case if we can't find and absorb any next chunk then malloc a new
+     * chunk and copy the contents there and free the old chunk 
+     */
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
@@ -335,8 +441,8 @@ void *mm_realloc(void *ptr, size_t size)
     if (newptr == NULL)
       return NULL;
 
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    copySize = GET_SIZE(copySize) - (2 * DSIZE);
+    copySize = GET_SIZE(HDRP(ptr));
+    copySize = copySize - (2 * DSIZE);
     
     if (size < copySize)
       copySize = size;
