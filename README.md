@@ -8,7 +8,7 @@ This repo contains all of my solutions for the labs exercises from the book CS:A
 - [ ] Architecture Lab
 - [x] Cache Lab
 - [x] Shell Lab
-- [ ] Malloc Lab
+- [x] Malloc Lab
 - [ ] Proxy Lab
 
 ## Description of labs
@@ -26,3 +26,6 @@ This repo contains all of my solutions for the labs exercises from the book CS:A
 
 
 - [Shell Lab](https://github.com/0xanubian/csapp-lab/tree/main/shell_lab): In this lab we implement a tiny shell with features like background processes and job control. I implemented process creation, process synchronisation using signal masking, reaping child processes, signals, signal handlers, change the state of a process from foreground to background to stopped. Its a good exercise to learns about parent child relation, signal safe code, signal handling, process control.
+
+
+- [Malloc Lab](https://github.com/0xanubian/csapp-lab/tree/main/malloc_lab): In this lab we implement a dynamic memory allocator which has the `malloc`, `free` and `realloc` functions. I used a very simple meory chunk design with an explicit free list to score 84 out of 100 by the driver program. This is a wonderful lab to learn about dynamic memory allocation, memory chunk design, explicit and segregrated free list, coalescing of freed chunk, finding free chunk for a malloc request, memory fragmentation and coding at raw bytes level.
